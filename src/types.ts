@@ -1,3 +1,9 @@
+export type Env = {
+	Bindings: {
+		following: KVNamespace;
+	};
+};
+
 export type HNItem = {
 	id: number;
 	descendants?: number;

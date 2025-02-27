@@ -1,14 +1,13 @@
-import { Hono, type Context } from "hono";
-import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { fetchHNItem } from "./utils";
-import type { NotificationResponse } from "./types";
-
-export type Env = {
-	Bindings: {
-		following: KVNamespace;
-	};
-};
+import { Hono } from "hono";
+import { z } from "zod";
+import type { Env, NotificationResponse } from "./types";
+import {
+	HN_BASE_URL,
+	HN_PREFIX,
+	getItem,
+	validateAndFetchHNItem,
+} from "./utils";
 
 const schema = z.object({
 	id: z
@@ -16,20 +15,6 @@ const schema = z.object({
 		.regex(/^[0-9]+$/)
 		.transform((v) => Number(v)),
 });
-
-async function getItem<T extends Env>(c: Context<T>, key: string) {
-	const item = await c.env.following.get(key);
-
-	if (!item) {
-		return null;
-	}
-
-	return {
-		id: key.split("_")[1],
-		comments: Number(item),
-		url: `https://news.ycombinator.com/item?id=${key.split("_")[1]}`,
-	};
-}
 
 const app = new Hono<Env>();
 
@@ -39,58 +24,44 @@ app.get("/", async (c) => {
 
 app.get("/follow/:id", zValidator("param", schema), async (c) => {
 	const { id } = c.req.valid("param");
-	const key = `hn_${id}`;
+	const key = `${HN_PREFIX}${id}`;
 
 	const item = await c.env.following.get(key);
 
 	if (item) {
-		return c.json(
-			{
-				message: `Already following HN item ${id}`,
-			},
-			200,
-		);
+		return c.json({ message: `Already following HN item ${id}` }, 200);
 	}
 
-	const { data, error } = await fetchHNItem(id);
+	try {
+		const data = await validateAndFetchHNItem(id);
+		const comments = data.kids?.length ?? 0;
 
-	if (error) {
+		await c.env.following.put(key, comments.toString());
+
 		return c.json(
 			{
-				message: `Error getting HN item ${id}`,
+				message: `Followed HN item ${id}`,
+				item: {
+					id,
+					comments,
+					url: `${HN_BASE_URL}?id=${id}`,
+				},
+			},
+			201,
+		);
+	} catch (error) {
+		return c.json(
+			{
+				message: error instanceof Error ? error.message : "Unknown error",
 			},
 			400,
 		);
 	}
-
-	if (data === null && error === null) {
-		return c.json(
-			{
-				message: `HN item ${id} is not a valid item`,
-			},
-			400,
-		);
-	}
-	const comments = data.kids?.length ?? 0;
-
-	await c.env.following.put(key, comments.toString());
-
-	return c.json(
-		{
-			message: `Followed HN item ${id}`,
-			item: {
-				id,
-				comments,
-				url: `https://news.ycombinator.com/item?id=${id}`,
-			},
-		},
-		201,
-	);
 });
 
 app.get("/unfollow/:id", zValidator("param", schema), async (c) => {
 	const { id } = c.req.valid("param");
-	const key = `hn_${id}`;
+	const key = `${HN_PREFIX}${id}`;
 
 	const item = await c.env.following.get(key);
 
@@ -123,13 +94,13 @@ app.get("/unfollow/:id", zValidator("param", schema), async (c) => {
 
 app.get("/get/:id", zValidator("param", schema), async (c) => {
 	const { id } = c.req.valid("param");
-	const item = await getItem(c, `hn_${id}`);
+	const item = await getItem(c, `${HN_PREFIX}${id}`);
 	return c.json(item, 200);
 });
 
 app.get("/list", async (c) => {
 	try {
-		const { keys } = await c.env.following.list({ prefix: "hn_" });
+		const { keys } = await c.env.following.list({ prefix: HN_PREFIX });
 
 		const itemsArray = [];
 
@@ -150,45 +121,36 @@ app.get("/list", async (c) => {
 });
 
 app.get("/check", async (c) => {
-	const { keys } = await c.env.following.list({ prefix: "hn_" });
+	const { keys } = await c.env.following.list({ prefix: HN_PREFIX });
 	const notifications: NotificationResponse[] = [];
 
 	for (const key of keys) {
 		const item = await getItem(c, key.name);
 		const id = key.name.split("_")[1];
 
-		const { data, error } = await fetchHNItem(Number(id));
-		if (error) {
+		try {
+			const data = await validateAndFetchHNItem(Number(id));
+			const storedComments = item?.comments ?? 0;
+			const currentComments = data.kids?.length ?? 0;
+
+			if (storedComments < currentComments) {
+				await c.env.following.put(key.name, currentComments.toString());
+			}
+
+			notifications.push({
+				id: Number(id),
+				newComments: currentComments - storedComments,
+				url: `${HN_BASE_URL}?id=${id}`,
+				notification: storedComments < currentComments,
+			});
+		} catch (error) {
 			return c.json(
 				{
-					message: `Error getting HN item ${id}`,
+					message: error instanceof Error ? error.message : "Unknown error",
 				},
 				400,
 			);
 		}
-
-		if (data === null && error === null) {
-			return c.json(
-				{
-					message: `HN item ${id} is not a valid item`,
-				},
-				400,
-			);
-		}
-
-		const storedComments = item?.comments ?? 0;
-		const currentComments = data.kids?.length ?? 0;
-
-		if (storedComments < currentComments) {
-			await c.env.following.put(key.name, currentComments.toString());
-		}
-
-		notifications.push({
-			id: Number(id),
-			newComments: currentComments - storedComments,
-			url: `https://news.ycombinator.com/item?id=${id}`,
-			notification: storedComments < currentComments,
-		});
 	}
 	return c.json(notifications, 200);
 });
