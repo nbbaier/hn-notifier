@@ -19,7 +19,14 @@ const schema = z.object({
 const app = new Hono<Env>();
 
 app.get("/", async (c) => {
-	return c.text("Hello Hono!");
+	const availableRoutes = {
+		"GET /follow/:id": "follow an item",
+		"GET /unfollow/:id": "unfollow an item",
+		"GET /get/:id": "get an item's details",
+		"GET /list": "list all items you're following",
+		"GET /check": "check for new comments on items you're following",
+	};
+	return c.json(availableRoutes, 200);
 });
 
 app.get("/follow/:id", zValidator("param", schema), async (c) => {
