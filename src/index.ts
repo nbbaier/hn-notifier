@@ -1,16 +1,18 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { Env, FollowedItem, NotificationResponse } from "./types";
+import type { Env, NotificationResponse } from "./types";
 import {
-	HN_BASE_URL,
 	HN_PREFIX,
+	createHNItemUrl,
 	determineFormatNotification,
 	getItem,
+	handleError,
 	validateAndFetchHNItem,
 } from "./utils";
 
-// Validate ID parameter format
+const app = new Hono<Env>();
+
 const idSchema = z.object({
 	id: z
 		.string()
@@ -18,9 +20,6 @@ const idSchema = z.object({
 		.transform((v) => Number(v)),
 });
 
-const app = new Hono<Env>();
-
-// Route definitions
 app.get("/", async (c) => {
 	const availableRoutes = {
 		"GET /follow/:id": "follow an item",
@@ -32,12 +31,10 @@ app.get("/", async (c) => {
 	return c.json(availableRoutes, 200);
 });
 
-// Follow a HN item
 app.get("/follow/:id", zValidator("param", idSchema), async (c) => {
 	const { id } = c.req.valid("param");
 	const key = `${HN_PREFIX}${id}`;
 
-	// Check if already following
 	const existingItem = await c.env.following.get(key);
 	if (existingItem) {
 		return c.json({ message: `Already following HN item ${id}` }, 200);
@@ -55,27 +52,20 @@ app.get("/follow/:id", zValidator("param", idSchema), async (c) => {
 				item: {
 					id,
 					comments,
-					url: `${HN_BASE_URL}?id=${id}`,
+					url: createHNItemUrl(id),
 				},
 			},
 			201,
 		);
 	} catch (error) {
-		return c.json(
-			{
-				message: error instanceof Error ? error.message : "Unknown error",
-			},
-			400,
-		);
+		return c.json(handleError(error), 400);
 	}
 });
 
-// Unfollow a HN item
 app.get("/unfollow/:id", zValidator("param", idSchema), async (c) => {
 	const { id } = c.req.valid("param");
 	const key = `${HN_PREFIX}${id}`;
 
-	// Check if item exists
 	const existingItem = await c.env.following.get(key);
 	if (!existingItem) {
 		return c.json(
@@ -95,23 +85,16 @@ app.get("/unfollow/:id", zValidator("param", idSchema), async (c) => {
 			200,
 		);
 	} catch (error) {
-		return c.json(
-			{
-				message: error instanceof Error ? error.message : "Unknown error",
-			},
-			500,
-		);
+		return c.json(handleError(error), 500);
 	}
 });
 
-// Get a specific HN item
 app.get("/get/:id", zValidator("param", idSchema), async (c) => {
 	const { id } = c.req.valid("param");
 	const item = await getItem(c, `${HN_PREFIX}${id}`);
 	return c.json(item, 200);
 });
 
-// List all followed items
 app.get("/list", async (c) => {
 	try {
 		const { keys } = await c.env.following.list({ prefix: HN_PREFIX });
@@ -122,30 +105,18 @@ app.get("/list", async (c) => {
 			}),
 		);
 
-		// Filter out null items
 		const validItems = items.filter(Boolean);
 		return c.json(validItems, 200);
 	} catch (error) {
-		return c.json(
-			{
-				success: false,
-				message:
-					error instanceof Error
-						? error.message
-						: "Error listing followed items",
-			},
-			500,
-		);
+		return c.json(handleError(error), 500);
 	}
 });
 
-// Check for new comments on followed items
 app.get("/check", async (c) => {
 	try {
 		const { keys } = await c.env.following.list({ prefix: HN_PREFIX });
 		const notifications: NotificationResponse[] = [];
 
-		// Process each item in parallel
 		const results = await Promise.all(
 			keys.map(async (key) => {
 				try {
@@ -161,22 +132,13 @@ app.get("/check", async (c) => {
 			}),
 		);
 
-		// Filter out null results and add to notifications
 		for (const notification of results.filter(Boolean)) {
 			if (notification) notifications.push(notification);
 		}
 
 		return c.json(notifications, 200);
 	} catch (error) {
-		return c.json(
-			{
-				message:
-					error instanceof Error
-						? error.message
-						: "Error checking for notifications",
-			},
-			500,
-		);
+		return c.json(handleError(error), 500);
 	}
 });
 
