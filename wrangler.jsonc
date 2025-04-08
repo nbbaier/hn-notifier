@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hn-notifier",
   "main": "src/index.ts",
-  "compatibility_date": "2025-02-27",
+  "compatibility_date": "2025-04-08",
   "kv_namespaces": [
     {
       "binding": "following",
