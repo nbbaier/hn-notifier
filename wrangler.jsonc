@@ -9,5 +9,9 @@
       "id": "2f4c4b7cced14d1e81c9bc6f9ca6320e",
       "preview_id": "0ccfa4a690d1457d8134f2360ed9e19f"
     }
-  ]
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
 }
