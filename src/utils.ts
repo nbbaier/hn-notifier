@@ -1,36 +1,27 @@
 import { betterFetch } from "@better-fetch/fetch";
-import type { HNItem, Env, FollowedItem, NotificationResponse } from "./types";
 import type { Context } from "hono";
+import type {
+	DBItem,
+	FollowedItem,
+	HNAPIResponse,
+	HNItem,
+	NotificationResponse,
+} from "./types";
 
 export const HN_PREFIX = "hn_";
 export const HN_BASE_URL = "https://news.ycombinator.com/item";
+export const HN_API_URL = "https://hn.algolia.com/api/v1/items";
 
-/**
- * Creates a URL for a Hacker News item
- * @param id - The ID of the Hacker News item
- * @returns The complete URL for the item
- */
 export function createHNItemUrl(id: number): string {
 	return `${HN_BASE_URL}?id=${id}`;
 }
 
-/**
- * Standardizes error handling across the application
- * @param error - The error to handle
- * @returns An object containing the error message
- */
 export function handleError(error: unknown): { message: string } {
 	return {
 		message: error instanceof Error ? error.message : "Unknown error occurred",
 	};
 }
 
-/**
- * Validates and fetches a Hacker News item by ID
- * @param id - The ID of the item to fetch
- * @returns The fetched HN item
- * @throws Error if the item is invalid or cannot be fetched
- */
 export async function validateAndFetchHNItem(id: number) {
 	const { data, error } = await betterFetch<HNItem>(
 		`https://hacker-news.firebaseio.com/v0/item/${id}.json`,
@@ -47,29 +38,14 @@ export async function validateAndFetchHNItem(id: number) {
 	return data;
 }
 
-/**
- * Updates the comment count for a followed item in the KV store
- * @param c - The Hono context
- * @param key - The key of the item in the KV store
- * @param currentComments - The current number of comments
- */
-export async function updateCommentCount<T extends Env>(
-	c: Context<T>,
+export async function updateCommentCount(
+	c: Context,
 	key: string,
 	currentComments: number,
 ) {
 	await c.env.following.put(key, currentComments.toString());
 }
 
-/**
- * Creates a notification response object
- * @param id - The ID of the HN item
- * @param storedComments - The number of comments stored in the KV store
- * @param currentComments - The current number of comments on HN
- * @param type - The type of the item (story or comment)
- * @param title - Optional title for story items
- * @returns A notification response object
- */
 export function createNotificationResponse(
 	id: number,
 	storedComments: number,
@@ -87,16 +63,8 @@ export function createNotificationResponse(
 	};
 }
 
-/**
- * Determines and formats a notification for a HN item
- * @param c - The Hono context
- * @param data - The HN item data
- * @param item - The followed item from the KV store
- * @returns A notification response if there are new comments
- * @throws Error if the item type is invalid
- */
-export async function determineFormatNotification<T extends Env>(
-	c: Context<T>,
+export async function determineFormatNotification(
+	c: Context,
 	data: HNItem,
 	item: FollowedItem,
 ) {
@@ -122,14 +90,8 @@ export async function determineFormatNotification<T extends Env>(
 	);
 }
 
-/**
- * Retrieves a followed item from the KV store
- * @param c - The Hono context
- * @param key - The key of the item in the KV store
- * @returns The followed item or null if not found
- */
-export async function getItem<T extends Env>(
-	c: Context<T>,
+export async function getItem(
+	c: Context,
 	key: string,
 ): Promise<FollowedItem | null> {
 	const item = await c.env.following.get(key);
@@ -145,5 +107,76 @@ export async function getItem<T extends Env>(
 		id,
 		comments: Number(item),
 		url: createHNItemUrl(id),
+	};
+}
+
+export function countAllChildren(item: HNAPIResponse): number {
+	const stack: HNAPIResponse[] = [item];
+	let count = 0;
+
+	while (stack.length > 0) {
+		const current = stack.pop();
+
+		if (current === undefined) break;
+
+		if (current.children && current.children.length > 0) {
+			count += current.children.length;
+			stack.push(...current.children);
+		}
+	}
+
+	return count;
+}
+
+export async function getHNCommentStoryTitle(storyId: number): Promise<{
+	data: { storyTitle: string } | null;
+	error: {
+		message?: string | undefined;
+		status: number;
+		statusText: string;
+	} | null;
+}> {
+	const { data, error } = await getHNItem(storyId);
+
+	let newData: { storyTitle: string } | undefined;
+
+	if (data) {
+		const { title } = data;
+		newData = { storyTitle: title || "" };
+	}
+
+	return { data: newData || null, error };
+}
+
+export async function getHNItem(id: number) {
+	return await betterFetch<HNAPIResponse>(`${HN_API_URL}/${id}`);
+}
+
+export async function createDBItem(
+	id: number,
+	data: HNAPIResponse,
+): Promise<DBItem> {
+	const comments = countAllChildren(data);
+	const replies = data.children.length;
+
+	if (data.type === "comment") {
+		let title = "";
+		if (data.story_id) {
+			const { data: storyTitleData, error } = await getHNCommentStoryTitle(
+				data.story_id,
+			);
+			if (!error && storyTitleData) {
+				title = `Comment on ${storyTitleData.storyTitle}`;
+			}
+		}
+		return { id, title, comments, type: "comment", replies };
+	}
+
+	return {
+		id,
+		title: data.title || "",
+		comments,
+		type: data.type,
+		replies,
 	};
 }

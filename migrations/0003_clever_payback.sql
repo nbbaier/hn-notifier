@@ -1,0 +1,42 @@
+CREATE TABLE
+	`users` (
+		`id` integer PRIMARY KEY NOT NULL,
+		`username` text NOT NULL,
+		`age` integer,
+		CONSTRAINT "age_check1" CHECK ("users"."age" > 21)
+	);
+
+--> statement-breakpoint
+PRAGMA foreign_keys = OFF;
+
+--> statement-breakpoint
+CREATE TABLE
+	`__new_hn_following` (
+		`id` integer PRIMARY KEY NOT NULL,
+		`title` text,
+		`type` text,
+		`comments` integer,
+		`replies` integer
+	);
+
+--> statement-breakpoint
+INSERT INTO
+	`__new_hn_following` ("id", "title", "type", "comments", "replies")
+SELECT
+	"id",
+	"title",
+	"type",
+	"comments",
+	"replies"
+FROM
+	`hn_following`;
+
+--> statement-breakpoint
+DROP TABLE `hn_following`;
+
+--> statement-breakpoint
+ALTER TABLE `__new_hn_following`
+RENAME TO `hn_following`;
+
+--> statement-breakpoint
+PRAGMA foreign_keys = ON;

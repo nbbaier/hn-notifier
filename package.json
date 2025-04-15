@@ -1,21 +1,30 @@
 {
 	"name": "hn-notifier",
+	"type": "module",
 	"scripts": {
 		"dev": "wrangler dev --remote",
-		"deploy": "wrangler deploy --minify"
+		"deploy": "wrangler deploy --minify",
+		"types": "wrangler types",
+		"db:generate": "drizzle-kit generate",
+		"db:local": "wrangler d1 migrations apply hn-notifier --local",
+		"db:migrate": "wrangler d1 migrations apply hn-notifier --remote"
 	},
 	"dependencies": {
 		"@better-fetch/fetch": "^1.1.18",
 		"@hono/zod-validator": "^0.4.3",
+		"drizzle-orm": "^0.41.0",
+		"drizzle-seed": "^0.3.1",
 		"hono": "^4.7.6"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
-		"@cloudflare/workers-types": "^4.20250408.0",
-		"@types/bun": "^1.2.8",
-		"wrangler": "4"
+		"@types/bun": "^1.2.9",
+		"drizzle-kit": "^0.30.6",
+		"drizzle-zod": "^0.7.1",
+		"miniflare": "^4.20250409.0",
+		"wrangler": "^4.10.0"
 	},
 	"peerDependencies": {
-		"typescript": "^5.7.3"
+		"typescript": "^5.8.3"
 	}
 }
