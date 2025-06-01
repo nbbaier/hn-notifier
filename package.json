@@ -2,7 +2,8 @@
 	"name": "hn-notifier",
 	"scripts": {
 		"dev": "wrangler dev --remote",
-		"deploy": "wrangler deploy --minify"
+		"deploy": "wrangler deploy --minify",
+		"test": "bun test"
 	},
 	"dependencies": {
 		"@better-fetch/fetch": "^1.1.18",

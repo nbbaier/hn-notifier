@@ -20,9 +20,20 @@ export function createHNItemUrl(id: number): string {
  * @returns An object containing the error message
  */
 export function handleError(error: unknown): { message: string } {
-	return {
-		message: error instanceof Error ? error.message : "Unknown error occurred",
-	};
+	// Log the original error for debugging purposes
+	console.error("Original error:", error);
+
+	if (error instanceof Error) {
+		return { message: error.message };
+	}
+	if (typeof error === 'string') {
+		return { message: error };
+	}
+	if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+		return { message: (error as any).message };
+	}
+
+	return { message: "An unexpected error occurred." };
 }
 
 /**
