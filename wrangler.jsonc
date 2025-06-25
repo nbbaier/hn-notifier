@@ -1,20 +1,18 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "hn-notifier",
-  "main": "src/index.ts",
-  "compatibility_date": "2025-04-08",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
-  "kv_namespaces": [
-    {
-      "binding": "following",
-      "id": "2f4c4b7cced14d1e81c9bc6f9ca6320e",
-      "preview_id": "0ccfa4a690d1457d8134f2360ed9e19f"
-    }
-  ],
-  "observability": {
-    "enabled": true,
-    "head_sampling_rate": 1
-  }
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "hn-notifier",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-08",
+	"compatibility_flags": ["nodejs_compat"],
+	"kv_namespaces": [
+		{
+			"binding": "following",
+			"id": "2f4c4b7cced14d1e81c9bc6f9ca6320e",
+			"preview_id": "0ccfa4a690d1457d8134f2360ed9e19f"
+		}
+	],
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	}
 }
