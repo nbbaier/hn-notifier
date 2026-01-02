@@ -26,24 +26,27 @@ let interval = 5 * 60 * 1000; // Start with 5 minutes
 const maxInterval = 30 * 60 * 1000; // Max interval of 30 minutes
 
 async function checkForUpdates() {
-  try {
-    const response = await fetch('https://your-api-endpoint.com/check');
-    const notifications = await response.json();
-    
-    if (notifications.length > 0) {
-      // Reset interval if we received notifications
-      interval = 5 * 60 * 1000;
-      // Process notifications
-    } else {
-      // Increase interval, but cap it at maxInterval
-      interval = Math.min(interval * 2, maxInterval);
-    }
-  } catch (error) {
-    console.error('Error checking for updates:', error);
-  }
-  
-  // Schedule next check
-  setTimeout(checkForUpdates, interval);
+   try {
+      const response = await fetch("https://your-api-endpoint.com/check");
+      if (!response.ok) {
+         throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const notifications = await response.json();
+
+      if (notifications.length > 0) {
+         // Reset interval if we received notifications
+         interval = 5 * 60 * 1000;
+         // Process notifications
+      } else {
+         // Increase interval, but cap it at maxInterval
+         interval = Math.min(interval * 2, maxInterval);
+      }
+   } catch (error) {
+      console.error("Error checking for updates:", error);
+   }
+
+   // Schedule next check
+   setTimeout(checkForUpdates, interval);
 }
 
 // Start checking
@@ -64,31 +67,36 @@ Example of a simple batching system:
 
 ```javascript
 class FollowQueue {
-  constructor(batchSize = 5, intervalMs = 1000) {
-    this.queue = [];
-    this.batchSize = batchSize;
-    this.intervalMs = intervalMs;
-  }
+   constructor(batchSize = 5, intervalMs = 1000) {
+      this.queue = [];
+      this.batchSize = batchSize;
+      this.intervalMs = intervalMs;
+   }
 
-  add(id) {
-    this.queue.push(id);
-    if (this.queue.length >= this.batchSize) {
-      this.processQueue();
-    }
-  }
-
-  async processQueue() {
-    const batch = this.queue.splice(0, this.batchSize);
-    for (const id of batch) {
-      try {
-        await fetch(`https://your-api-endpoint.com/follow/${id}`);
-        console.log(`Followed item ${id}`);
-      } catch (error) {
-        console.error(`Error following item ${id}:`, error);
+   add(id) {
+      this.queue.push(id);
+      if (this.queue.length >= this.batchSize) {
+         this.processQueue();
       }
-      await new Promise(resolve => setTimeout(resolve, this.intervalMs));
-    }
-  }
+   }
+
+   async processQueue() {
+      const batch = this.queue.splice(0, this.batchSize);
+      for (const id of batch) {
+         try {
+            const response = await fetch(
+               `https://your-api-endpoint.com/follow/${id}`
+            );
+            if (!response.ok) {
+               throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            console.log(`Followed item ${id}`);
+         } catch (error) {
+            console.error(`Error following item ${id}:`, error);
+         }
+         await new Promise((resolve) => setTimeout(resolve, this.intervalMs));
+      }
+   }
 }
 
 const followQueue = new FollowQueue();
@@ -111,28 +119,29 @@ Example of a simple retry mechanism:
 
 ```javascript
 async function fetchWithRetry(url, maxRetries = 3) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return response.json();
-      if (response.status >= 400 && response.status < 500) {
-        // Don't retry client errors
-        throw new Error(`Client error: ${response.status}`);
+   for (let i = 0; i < maxRetries; i++) {
+      try {
+         const response = await fetch(url);
+         if (response.ok) return response.json();
+         if (response.status >= 400 && response.status < 500) {
+            throw new Error(`Client error: ${response.status}`);
+         }
+         throw new Error(`Server error: ${response.status}`);
+      } catch (error) {
+         if (error.message.startsWith("Client error:")) throw error;
+         if (i === maxRetries - 1) throw error;
+         const delay = Math.pow(2, i) * 1000;
+         await new Promise((resolve) => setTimeout(resolve, delay));
       }
-    } catch (error) {
-      if (i === maxRetries - 1) throw error;
-      const delay = Math.pow(2, i) * 1000; // Exponential backoff
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
+   }
 }
 
 // Usage:
 try {
-  const data = await fetchWithRetry('https://your-api-endpoint.com/check');
-  // Process data
+   const data = await fetchWithRetry("https://your-api-endpoint.com/check");
+   // Process data
 } catch (error) {
-  console.error('Failed to fetch after multiple retries:', error);
+   console.error("Failed to fetch after multiple retries:", error);
 }
 ```
 
