@@ -7,6 +7,7 @@ import {
 	HN_PREFIX,
 	createHNItemUrl,
 	determineFormatNotification,
+	getCommentCount,
 	getItem,
 	handleError,
 	validateAndFetchHNItem,
@@ -43,7 +44,7 @@ app.get("/follow/:id", zValidator("param", idSchema), async (c) => {
 
 	try {
 		const data = await validateAndFetchHNItem(id);
-		const comments = data.kids?.length ?? 0;
+		const comments = getCommentCount(data);
 
 		await c.env.following.put(key, comments.toString());
 
