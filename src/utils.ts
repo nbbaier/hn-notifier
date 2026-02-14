@@ -37,6 +37,16 @@ export function handleError(error: unknown): { message: string } {
 }
 
 /**
+ * Calculates the number of comments for an HN item.
+ * Uses descendants if available (for stories/polls), otherwise falls back to kids.length (for comments).
+ * @param item - The HN item
+ * @returns The number of comments
+ */
+export function getCommentCount(item: HNItem): number {
+	return item.descendants ?? item.kids?.length ?? 0;
+}
+
+/**
  * Validates and fetches a Hacker News item by ID
  * @param id - The ID of the item to fetch
  * @returns The fetched HN item
@@ -77,15 +87,15 @@ export async function updateCommentCount<T extends Env>(
  * @param id - The ID of the HN item
  * @param storedComments - The number of comments stored in the KV store
  * @param currentComments - The current number of comments on HN
- * @param type - The type of the item (story or comment)
- * @param title - Optional title for story items
+ * @param type - The type of the item (story, comment, or poll)
+ * @param title - Optional title for story/poll items
  * @returns A notification response object
  */
 export function createNotificationResponse(
 	id: number,
 	storedComments: number,
 	currentComments: number,
-	type: "story" | "comment",
+	type: "story" | "comment" | "poll",
 	title?: string,
 ): NotificationResponse {
 	return {
@@ -94,7 +104,7 @@ export function createNotificationResponse(
 		url: createHNItemUrl(id),
 		notification: storedComments < currentComments,
 		type,
-		...(type === "story" && title ? { title } : {}),
+		...((type === "story" || type === "poll") && title ? { title } : {}),
 	};
 }
 
@@ -111,16 +121,16 @@ export async function determineFormatNotification<T extends Env>(
 	data: HNItem,
 	item: FollowedItem,
 ) {
-	if (!data.type || !["story", "comment"].includes(data.type)) {
+	if (!data.type || !["story", "comment", "poll"].includes(data.type)) {
 		throw new Error("Can't format this type of item");
 	}
 
 	const key = item.key;
 	const id = item.id;
 	const storedComments = item?.comments ?? 0;
-	const currentComments = data.kids?.length ?? 0;
+	const currentComments = getCommentCount(data);
 
-	if (storedComments < currentComments) {
+	if (storedComments !== currentComments) {
 		await updateCommentCount(c, key, currentComments);
 	}
 
@@ -128,7 +138,7 @@ export async function determineFormatNotification<T extends Env>(
 		id,
 		storedComments,
 		currentComments,
-		data.type as "story" | "comment",
+		data.type as "story" | "comment" | "poll",
 		data.title,
 	);
 }

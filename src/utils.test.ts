@@ -8,6 +8,7 @@ import {
     determineFormatNotification,
     updateCommentCount, // Import to allow spying if needed, though mocking KV is better
     getItem,
+    getCommentCount,
     HN_PREFIX,
     HN_BASE_URL
 } from './utils';
@@ -116,6 +117,23 @@ describe('Utility Functions from utils.ts', () => {
         });
     });
 
+    describe('getCommentCount', () => {
+        it('should use descendants if available', () => {
+            const item: HNItem = { id: 1, descendants: 10, kids: [1,2,3] } as HNItem;
+            expect(getCommentCount(item)).toBe(10);
+        });
+
+        it('should use kids.length if descendants is undefined', () => {
+             const item: HNItem = { id: 1, kids: [1,2,3] } as HNItem;
+             expect(getCommentCount(item)).toBe(3);
+        });
+
+        it('should return 0 if neither descendants nor kids are present', () => {
+             const item: HNItem = { id: 1 } as HNItem;
+             expect(getCommentCount(item)).toBe(0);
+        });
+    });
+
     describe('validateAndFetchHNItem', () => {
         it('should fetch and return valid HN item data', async () => {
             const mockItemId = 123;
@@ -143,7 +161,6 @@ describe('Utility Functions from utils.ts', () => {
                 .rejects.toThrow(`HN item ${mockItemId} is not a valid item`);
             expect(betterFetch).toHaveBeenCalledWith(`https://hacker-news.firebaseio.com/v0/item/${mockItemId}.json`);
         });
-        // Removed tests for 'dead' or 'deleted' as validateAndFetchHNItem doesn't check for them
     });
 
     describe('updateCommentCount', () => {
@@ -190,21 +207,33 @@ describe('Utility Functions from utils.ts', () => {
             expect(response.type).toBe('comment');
             expect(response.title).toBeUndefined();
         });
+
+        it('should create a notification for a poll with title', () => {
+             const id = 4;
+             const storedComments = 2;
+             const currentComments = 5;
+             const title = 'Favorite Language?';
+             const response = createNotificationResponse(id, storedComments, currentComments, 'poll', title);
+
+             expect(response.type).toBe('poll');
+             expect(response.title).toBe(title);
+             expect(response.notification).toBe(true);
+        });
     });
 
     describe('determineFormatNotification', () => {
-        it('should process a story with new comments and trigger KV update', async () => {
+        it('should process a story with new comments (using descendants) and trigger KV update', async () => {
             const itemId = 101;
-            const hnItem: HNItem = { id: itemId, type: 'story', title: 'New Story', kids: [1,2,3,4,5,6,7,8,9,10], time: Date.now()/1000 }; // 10 kids
-            const followedItem: FollowedItem = { key: `${HN_PREFIX}${itemId}`, id: itemId, comments: 5, url: createHNItemUrl(itemId) };
+            const hnItem: HNItem = { id: itemId, type: 'story', title: 'New Story', descendants: 20, kids: [1,2], time: Date.now()/1000 };
+            const followedItem: FollowedItem = { key: `${HN_PREFIX}${itemId}`, id: itemId, comments: 15, url: createHNItemUrl(itemId) };
 
             const notification = await determineFormatNotification(mockCtx, hnItem, followedItem);
 
             expect(notification).toBeDefined();
-            expect(notification.newComments).toBe(5); // 10 (kids.length) - 5 (stored)
+            expect(notification.newComments).toBe(5); // 20 (descendants) - 15 (stored)
             expect(notification.notification).toBe(true);
             expect(notification.title).toBe('New Story');
-            expect(mockKVStore.put).toHaveBeenCalledWith(`${HN_PREFIX}${itemId}`, "10");
+            expect(mockKVStore.put).toHaveBeenCalledWith(`${HN_PREFIX}${itemId}`, "20");
         });
 
         it('should process a comment with no new comments, should not trigger KV update', async () => {
@@ -218,36 +247,35 @@ describe('Utility Functions from utils.ts', () => {
             expect(notification.newComments).toBe(0);
             expect(notification.notification).toBe(false);
             expect(notification.title).toBeUndefined();
-            expect(mockKVStore.put).not.toHaveBeenCalled(); // Comments didn't increase
+            expect(mockKVStore.put).not.toHaveBeenCalled(); // Comments didn't change
         });
 
-        it('should handle item with no kids (0 comments)', async () => {
-            const itemId = 103;
-            const hnItem: HNItem = { id: itemId, type: 'story', title: 'No Comments Yet', kids: [], time: Date.now()/1000 }; // 0 kids
-            const followedItem: FollowedItem = { key: `${HN_PREFIX}${itemId}`, id: itemId, comments: 0, url: createHNItemUrl(itemId) };
+        it('should process a poll', async () => {
+            const itemId = 107;
+            const hnItem: HNItem = { id: itemId, type: 'poll', title: 'Poll Title', descendants: 10, time: Date.now()/1000 };
+            const followedItem: FollowedItem = { key: `${HN_PREFIX}${itemId}`, id: itemId, comments: 5, url: createHNItemUrl(itemId) };
 
             const notification = await determineFormatNotification(mockCtx, hnItem, followedItem);
-            expect(notification.newComments).toBe(0);
-            expect(notification.notification).toBe(false);
-            expect(mockKVStore.put).not.toHaveBeenCalled();
+            expect(notification.newComments).toBe(5);
+            expect(notification.type).toBe('poll');
+            expect(mockKVStore.put).toHaveBeenCalledWith(`${HN_PREFIX}${itemId}`, "10");
         });
 
-        it('should handle item where descendants is present but kids is null/undefined (0 comments)', async () => {
-            const itemId = 104;
-            // HN API might return 'descendants' for stories/polls but 'kids' might be absent if there are no direct comments
-            const hnItem: HNItem = { id: itemId, type: 'story', title: 'No Kids Key', descendants: 10, time: Date.now()/1000 }; // kids is undefined
-            const followedItem: FollowedItem = { key: `${HN_PREFIX}${itemId}`, id: itemId, comments: 0, url: createHNItemUrl(itemId) };
+        it('should update KV if comments decrease (deletion) but not notify', async () => {
+            const itemId = 108;
+            const hnItem: HNItem = { id: itemId, type: 'story', descendants: 5, time: Date.now()/1000 };
+            const followedItem: FollowedItem = { key: `${HN_PREFIX}${itemId}`, id: itemId, comments: 10, url: createHNItemUrl(itemId) };
 
             const notification = await determineFormatNotification(mockCtx, hnItem, followedItem);
-            expect(notification.newComments).toBe(0); // kids?.length ?? 0 results in 0
+
+            expect(notification.newComments).toBe(-5);
             expect(notification.notification).toBe(false);
-            expect(mockKVStore.put).not.toHaveBeenCalled();
+            expect(mockKVStore.put).toHaveBeenCalledWith(`${HN_PREFIX}${itemId}`, "5"); // Updated to new lower count
         });
 
-
-        it('should throw error for invalid item type (e.g. poll)', async () => {
+        it('should throw error for invalid item type (e.g. job)', async () => {
             const itemId = 105;
-            const hnItem = { id: itemId, type: 'poll', kids: [1,2], time: Date.now()/1000 } as HNItem; // type 'poll' is not handled
+            const hnItem = { id: itemId, type: 'job', time: Date.now()/1000 } as HNItem;
             const followedItem: FollowedItem = { key: `${HN_PREFIX}${itemId}`, id: itemId, comments: 1, url: createHNItemUrl(itemId) };
 
             await expect(determineFormatNotification(mockCtx, hnItem, followedItem))
@@ -293,5 +321,3 @@ describe('Utility Functions from utils.ts', () => {
         });
     });
 });
-
-console.log("src/utils.test.ts updated according to src/utils.ts and src/types.ts structure.");
