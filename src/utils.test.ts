@@ -27,7 +27,7 @@ import { betterFetch } from '@better-fetch/fetch';
 // Mock for KV Namespace
 const mockKVStore = {
     put: mock((key: string, value: string) => Promise.resolve()),
-    get: mock((key: string) => Promise.resolve(null)), // Default to item not found
+    get: mock((key: string) => Promise.resolve(null as string | null)), // Default to item not found
 };
 
 // Mock for Hono Context
@@ -45,7 +45,7 @@ describe('Utility Functions from utils.ts', () => {
         (betterFetch as any).mockClear();
         mockKVStore.put.mockClear();
         mockKVStore.get.mockClear();
-        mockCtx.json.mockClear();
+        (mockCtx.json as any).mockClear();
     });
 
     describe('createHNItemUrl', () => {
