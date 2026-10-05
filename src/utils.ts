@@ -26,10 +26,15 @@ export function handleError(error: unknown): { message: string } {
 	if (error instanceof Error) {
 		return { message: error.message };
 	}
-	if (typeof error === 'string') {
+	if (typeof error === "string") {
 		return { message: error };
 	}
-	if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+	if (
+		typeof error === "object" &&
+		error !== null &&
+		"message" in error &&
+		typeof (error as any).message === "string"
+	) {
 		return { message: (error as any).message };
 	}
 
